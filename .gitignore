@@ -1,0 +1,27 @@
+# OS Junk Files
+.DS_Store
+Thumbs.db
+
+# Environment Files (CRITICAL - DO NOT COMMIT SECRETS)
+.env
+.env.local
+.env.development
+.env.production
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Node / Next.js
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Python / Django
+__pycache__/
+*.py[cod]
+venv/
+backend/venv/
+backend/db.sqlite3
+backend/media/
+backend/staticfiles/

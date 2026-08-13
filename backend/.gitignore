@@ -1,0 +1,33 @@
+# ==========================================
+# Python / Django / Backend
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments (CRITICAL)
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Local SQLite / Databases
+*.sqlite3
+*.sqlite3-journal
+*.db
+
+# Django Media Uploads & Static Files (CRITICAL - Do NOT commit student files)
+media/
+staticfiles/
+docx_submissions/
+
+# Local Backend Environment Files
+.env
+.env.local
+.env.production
+
+# Django Log Files
+*.log
