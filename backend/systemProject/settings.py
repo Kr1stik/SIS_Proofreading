@@ -1,7 +1,29 @@
 import os
 from pathlib import Path
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Database Configuration
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if DATABASE_URL:
+    # Render PostgreSQL Production Database
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+else:
+    # Local fallback for development (if needed)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-cyw!+jg))&x(7_yy#r48xy(h7g1#3&1gob$v_ko*)=##so7a^(')
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
