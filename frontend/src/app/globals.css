@@ -16,3 +16,36 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* Document & HTML Preview Bold Text & Typography Highlighting */
+.doc-content-view b,
+.doc-content-view strong {
+  font-weight: 800 !important;
+  color: #090d16 !important;
+  background-color: rgba(220, 149, 255, 0.18);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  border-bottom: 2px solid #dc95ff;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.doc-content-view h1,
+.doc-content-view h2,
+.doc-content-view h3,
+.doc-content-view h4 {
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  letter-spacing: -0.02em;
+}
+
+/* Matched Term Highlight Marker */
+mark.matched-term {
+  background-color: #fef08a !important;
+  color: #713f12 !important;
+  font-weight: 800 !important;
+  padding: 0.1rem 0.25rem;
+  border-radius: 0.2rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}

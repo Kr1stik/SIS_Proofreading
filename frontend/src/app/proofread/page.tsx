@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, ChangeEvent } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, ChangeEvent } from 'react';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import {
@@ -28,6 +28,8 @@ import {
   getMediaUrl,
   getAuthToken,
 } from '@/lib/api';
+import { OrbitRing } from '@/components/ui/orbit-ring';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 
 export interface FileItem {
   id?: number | string;
@@ -105,7 +107,7 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     if (!canvasRef.current) return;
     if (!document.fullscreenElement) {
       canvasRef.current.requestFullscreen().catch((err) => {
@@ -116,7 +118,7 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
         console.error('Error exiting fullscreen:', err);
       });
     }
-  };
+  }, []);
 
   const fullMediaUrl = useMemo(() => {
     return formatMediaUrl(url);
@@ -137,10 +139,9 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
     setError(null);
     setPdfError(false);
 
-    const fullUrl = formatMediaUrl(url);
     let currentBlobUrl: string | null = null;
 
-    fetch(fullUrl)
+    fetch(fullMediaUrl)
       .then((res) => {
         if (!res.ok) {
           setPdfError(true);
@@ -170,7 +171,7 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
         URL.revokeObjectURL(currentBlobUrl);
       }
     };
-  }, [url, isPdf]);
+  }, [url, isPdf, fullMediaUrl]);
 
   useEffect(() => {
     if (!url || isPdf) {
@@ -205,9 +206,9 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
       .finally(() => {
         setIsLoading(false);
       });
-  }, [url, isPdf]);
+  }, [url, isPdf, fullMediaUrl]);
 
-  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -230,15 +231,15 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
       setIsUploading(false);
       e.target.value = '';
     }
-  };
+  }, [onShowToast, onUploadSuccess]);
 
-  const handleDeleteFile = () => {
+  const handleDeleteFile = useCallback(() => {
     if (!url) return;
     const targetDoc = availableDocs.find((d) => d.url === url);
     const docId = targetDoc ? String(targetDoc.id) : '';
     const docName = targetDoc ? targetDoc.name : getFilenameFromUrl(url, 'Document');
     onRequestDelete('document', url, docId, docName);
-  };
+  }, [url, availableDocs, onRequestDelete]);
 
   const docFilename = getFilenameFromUrl(url, 'Document');
 
@@ -256,14 +257,14 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
           <select
             value={url}
             onChange={(e) => onSelectDoc(e.target.value)}
-            className="bg-white text-xs font-semibold text-slate-800 border border-slate-200 rounded-lg px-2.5 py-1 max-w-[200px] truncate focus:outline-none focus:ring-2 focus:ring-[#DC95FF]/30 focus:border-[#DC95FF] shadow-xs cursor-pointer"
+            className="bg-white text-xs font-semibold text-slate-800 border border-slate-200 rounded-lg px-2.5 py-1 max-w-[180px] truncate focus:outline-none focus:ring-2 focus:ring-[#DC95FF]/30 focus:border-[#DC95FF] shadow-xs cursor-pointer"
           >
             {availableDocs.length === 0 ? (
               <option value="">No Documents Available</option>
             ) : (
               availableDocs.map((doc) => (
-                <option key={doc.url} value={doc.url} className="bg-white text-slate-900">
-                  {doc.name}
+                <option key={doc.url} value={doc.url}>
+                  {doc.name || getFilenameFromUrl(doc.url, 'Document')}
                 </option>
               ))
             )}
@@ -292,7 +293,7 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
 
           <label className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-[#DC95FF] hover:opacity-90 text-white font-medium text-xs rounded-lg cursor-pointer transition-all shadow-xs">
             {isUploading ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <OrbitRing className="w-3.5 h-3.5 text-white" />
             ) : (
               <Upload className="w-3.5 h-3.5" />
             )}
@@ -318,63 +319,49 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
         {/* COMPACT THEMED FLOATING CONTROLS */}
         {url && (
           <div className="absolute top-4 right-4 z-20 flex items-center space-x-2 bg-[#181824]/90 backdrop-blur border border-[#DC95FF]/30 text-white rounded-lg px-3 py-1.5 shadow-lg">
-            {/* Zoom Out Button */}
-            <button
-              onClick={() => setZoom((prev) => Math.max(prev - 15, 50))}
-              className="p-1 hover:text-[#DC95FF] hover:bg-white/10 rounded transition-colors cursor-pointer"
-              title="Zoom Out"
-              type="button"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-mono font-medium px-1 select-none min-w-[2.5rem] text-center">
-              {zoom}%
+            <span className="text-[11px] font-medium text-purple-200 uppercase tracking-wider font-mono">
+              {isPdf ? 'PDF View' : 'DOCX View'}
             </span>
-            {/* Zoom In Button */}
+            <div className="h-3 w-[1px] bg-slate-700 mx-1" />
             <button
-              onClick={() => setZoom((prev) => Math.min(prev + 15, 200))}
-              className="p-1 hover:text-[#DC95FF] hover:bg-white/10 rounded transition-colors cursor-pointer"
+              onClick={() => setZoom((prev) => Math.min(prev + 10, 200))}
+              className="p-1 hover:bg-[#DC95FF]/20 text-purple-200 hover:text-white rounded transition-colors cursor-pointer"
               title="Zoom In"
-              type="button"
             >
-              <ZoomIn className="w-4 h-4" />
+              <ZoomIn className="w-3.5 h-3.5" />
             </button>
-            {/* Reset Zoom Button */}
+            <span className="text-xs font-mono font-medium px-1 text-purple-300">{zoom}%</span>
+            <button
+              onClick={() => setZoom((prev) => Math.max(prev - 10, 50))}
+              className="p-1 hover:bg-[#DC95FF]/20 text-purple-200 hover:text-white rounded transition-colors cursor-pointer"
+              title="Zoom Out"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
             <button
               onClick={() => setZoom(100)}
-              className="p-1 hover:text-[#DC95FF] hover:bg-white/10 rounded transition-colors cursor-pointer"
+              className="p-1 hover:bg-[#DC95FF]/20 text-purple-200 hover:text-white rounded transition-colors cursor-pointer"
               title="Reset Zoom"
-              type="button"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
-
-            <div className="h-4 w-[1px] bg-[#DC95FF]/30 mx-1" />
-
-            {/* Fullscreen Toggle Button */}
+            <div className="h-3 w-[1px] bg-slate-700 mx-1" />
             <button
               onClick={toggleFullscreen}
-              className="p-1 hover:text-[#DC95FF] hover:bg-white/10 rounded transition-colors cursor-pointer"
+              className="p-1 hover:bg-[#DC95FF]/20 text-purple-200 hover:text-white rounded transition-colors cursor-pointer"
               title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-              type="button"
             >
-              {isFullscreen ? (
-                <Minimize2 className="w-4 h-4" />
-              ) : (
-                <Maximize2 className="w-4 h-4" />
-              )}
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
-
-            {/* Download PDF / Document Button */}
             <a
-              href={url}
-              download
+              href={fullMediaUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1 hover:text-[#DC95FF] hover:bg-white/10 rounded transition-colors flex items-center justify-center cursor-pointer"
-              title="Download Document"
+              download
+              className="p-1 hover:bg-[#DC95FF]/20 text-purple-200 hover:text-white rounded transition-colors cursor-pointer inline-flex items-center"
+              title="Download Source Document"
             >
-              <Download className="w-4 h-4" />
+              <Download className="w-3.5 h-3.5" />
             </a>
           </div>
         )}
@@ -387,8 +374,12 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
               Select an existing document from the dropdown above or upload a new .pdf / .docx file.
             </p>
             <label className="mt-4 px-4 py-2 bg-[#DC95FF] hover:opacity-90 text-white font-medium text-xs rounded-lg transition-all shadow-xs cursor-pointer inline-flex items-center space-x-2">
-              <Upload className="w-3.5 h-3.5" />
-              <span>Upload Document</span>
+              {isUploading ? (
+                <OrbitRing className="w-3.5 h-3.5 text-white" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              <span>{isUploading ? 'Uploading...' : 'Upload Document'}</span>
               <input
                 type="file"
                 accept=".docx,.pdf"
@@ -399,9 +390,12 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
             </label>
           </div>
         ) : isLoading ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
-            <div className="w-8 h-8 border-3 border-[#DC95FF] border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-medium">Loading Document Preview...</span>
+          <div className="h-full w-full p-6 flex flex-col justify-center max-w-xl mx-auto space-y-3">
+            <div className="flex items-center space-x-2 text-xs font-semibold text-purple-800 bg-purple-50 p-3 rounded-xl border border-purple-100 shadow-xs">
+              <OrbitRing className="w-4 h-4 text-[#DC95FF]" />
+              <span>Rendering document layout & typography layers...</span>
+            </div>
+            <ListSkeleton rows={5} />
           </div>
         ) : pdfError ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50 rounded-xl border border-dashed border-rose-200">
@@ -440,10 +434,10 @@ const DocumentViewerPane = React.memo(function DocumentViewerPane({
           <div className="w-full h-full overflow-y-auto p-4 bg-slate-100/60 rounded-xl">
             <div
               style={{ zoom: `${zoom}%` }}
-              className="max-w-3xl mx-auto bg-white text-slate-900 p-8 shadow-xl rounded-sm min-h-full transition-all"
+              className="max-w-3xl mx-auto bg-white text-slate-900 p-8 shadow-xl rounded-sm min-h-full transition-all doc-content-view"
             >
               <div
-                className="prose prose-slate max-w-none prose-headings:font-bold prose-p:leading-relaxed prose-p:mb-4 text-slate-900"
+                className="prose prose-slate max-w-none prose-headings:font-extrabold prose-headings:text-slate-950 prose-headings:tracking-tight prose-strong:font-extrabold prose-strong:text-slate-950 prose-strong:bg-purple-100/70 prose-strong:px-1.5 prose-strong:py-0.5 prose-strong:rounded-sm prose-strong:border-b-2 prose-strong:border-[#DC95FF] prose-b:font-extrabold prose-b:text-slate-950 prose-b:bg-purple-100/70 prose-b:px-1.5 prose-b:py-0.5 prose-b:rounded-sm prose-b:border-b-2 prose-b:border-[#DC95FF] prose-p:leading-relaxed prose-p:mb-4 text-slate-900"
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             </div>
@@ -479,90 +473,41 @@ interface SpreadsheetViewerPaneProps {
   onShowToast: (message: string, type?: 'success' | 'error' | 'warning') => void;
 }
 
-const HEADER_STRINGS_TO_FILTER = [
-  'midtown printing',
-  'page number',
-  'contents for this page',
-  'photos/cliparts/background',
-  'please write letter',
-  'instruction to midtown',
-  'write your specific instruction',
-  'texts',
-];
+const HighlightedText = React.memo(function HighlightedText({
+  text,
+  query,
+  className,
+}: {
+  text?: string;
+  query?: string;
+  className?: string;
+}) {
+  if (!text) return null;
+  if (!query || !query.trim()) {
+    return <span className={className}>{text}</span>;
+  }
 
-const DEPT_KEYWORDS = [
-  'EDITORIAL BOARD',
-  'COLLEGE EDITORS',
-  'JUNIOR STAFF',
-  'SENIOR STAFF',
-  'EXECUTIVE BOARD',
-  'ORGANIZATION',
-  'ORGANIZATIONS',
-  'HEADS AND MANAGERS',
-  'FLYLEAVES HEADER',
-  'ABC FLYLEAVES',
-  'XYZ FLYLEAVES',
-  'FLYLEAF',
-  'FLYLEAVES',
-  'COVER',
-  'PAGE PLAN',
-  'SECTION',
-  'DEDICATION',
-  'PREAMBLE',
-  'VISION',
-  'MISSION',
-  'PUBLICATION',
-  'BACOMM',
-  'AB ENG',
-  'AB ENGLISH',
-  'BS MATH',
-  'BS PSYCH',
-  'CBMA',
-  'CHTM',
-  'CICT',
-  'CED',
-  'CAS',
-  'CCJE',
-  'COE',
-  'BSIT',
-  'BSCS',
-  'BSED',
-  'BEED',
-  'BSBA',
-  'BSA',
-  'BSN',
-  'BSIS',
-  'FACULTY',
-  'ADMINISTRATION',
-  'CLASS PICTURES',
-];
+  const q = query.trim();
+  const escapedQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
 
-const isHeaderString = (str: string): boolean => {
-  if (!str) return false;
-  const s = str.trim().toLowerCase();
-  return HEADER_STRINGS_TO_FILTER.some((h) => s.includes(h));
-};
-
-const matchExactTorchSection = (str: string): string | null => {
-  if (!str) return null;
-  const upper = str.trim().toUpperCase();
-  if (upper.includes('EDITORIAL BOARD')) {
-    return 'Torch Bearer 2026 - Editorial Board';
-  }
-  if (upper.includes('COLLEGE EDITORS') || upper.includes('COLLEGE EDITOR')) {
-    return 'Torch Bearer 2026 - College Editors';
-  }
-  if (upper.includes('JUNIOR STAFF')) {
-    return 'Torch Bearer 2026 - Junior Staff';
-  }
-  if (upper.includes('ABC FLYLEAF') || upper.includes('ABC FLYLEAVES')) {
-    return 'ABC Flyleaves';
-  }
-  if (upper.includes('XYZ FLYLEAF') || upper.includes('XYZ FLYLEAVES')) {
-    return 'XYZ Flyleaves';
-  }
-  return null;
-};
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === q.toLowerCase() ? (
+          <mark
+            key={i}
+            className="matched-term bg-amber-200 text-amber-950 font-extrabold px-1 py-0.5 rounded-sm shadow-xs border-b border-amber-400"
+          >
+            {part}
+          </mark>
+        ) : (
+          <React.Fragment key={i}>{part}</React.Fragment>
+        )
+      )}
+    </span>
+  );
+});
 
 const extractPageLabel = (colAValue: any): string | undefined => {
   if (colAValue === undefined || colAValue === null) return undefined;
@@ -575,68 +520,105 @@ const extractPageLabel = (colAValue: any): string | undefined => {
     .replace(/^Spread\s+/i, '')
     .trim();
 
-  if (clean && clean.length <= 15 && !isHeaderString(str)) {
+  if (clean && clean.length <= 20) {
     return clean;
   }
   return undefined;
 };
 
-const checkIsHeaderEntry = (str: string): boolean => {
+const parseNameAndRole = (rawStr: string): { name: string; role?: string } => {
+  if (!rawStr) return { name: '' };
+  let trimmed = rawStr.trim();
+  trimmed = trimmed.replace(/^["'\s]+|["'\s]+$/g, '');
+
+  // 1. "Message of [Title] - [Name]" or "Message of [Title]: [Name]"
+  const msgMatch = trimmed.match(/^(Message\s+of\s+.+?)\s*[\-–—:]\s*(.+)$/i);
+  if (msgMatch) {
+    const roleTitle = msgMatch[1].trim();
+    const personName = msgMatch[2].trim();
+    if (personName && roleTitle) {
+      return { name: personName, role: roleTitle };
+    }
+  }
+
+  // 2. "[Role]: [Name]" pattern (e.g. "Layout Artist: Elmo")
+  const colonMatch = trimmed.match(/^([A-Za-z\s\/&]+):\s*(.+)$/);
+  if (colonMatch && !colonMatch[1].toLowerCase().includes('http')) {
+    const potentialRole = colonMatch[1].trim();
+    const potentialName = colonMatch[2].trim();
+    if (potentialRole && potentialName && potentialRole.length < 35) {
+      return { name: potentialName, role: potentialRole };
+    }
+  }
+
+  // 3. "[Name] - [Role/Department]" or "[Role] - [Name]" pattern
+  const dashMatch = trimmed.match(/^(.+?)\s*[\-–—]\s*(.+)$/);
+  if (dashMatch) {
+    const leftPart = dashMatch[1].trim();
+    const rightPart = dashMatch[2].trim();
+
+    const roleKeywords = ['editor', 'artist', 'proofreader', 'staff', 'secretary', 'adviser', 'president', 'manager', 'head', 'officer', 'photojournalist', 'layout', 'graphic'];
+    const leftIsRole = roleKeywords.some((k) => leftPart.toLowerCase().includes(k));
+
+    if (leftIsRole) {
+      return { name: rightPart, role: leftPart };
+    }
+    return { name: leftPart, role: rightPart };
+  }
+
+  // 4. "[Name] ([Role])" pattern
+  const parenMatch = trimmed.match(/^(.+?)\s*\((.+?)\)$/);
+  if (parenMatch) {
+    const namePart = parenMatch[1].trim();
+    const rolePart = parenMatch[2].trim();
+    if (namePart && rolePart) {
+      return { name: namePart, role: rolePart };
+    }
+  }
+
+  return { name: trimmed };
+};
+
+const isSectionHeaderCandidate = (str: string): boolean => {
   if (!str) return false;
   const s = str.trim();
   const upper = s.toUpperCase();
 
-  // If it's a person's entry with a dash like "Fritz A. Asada - Board Secretary", it's NOT a standalone header
-  const isPersonWithRole = (s.includes(' - ') || s.includes('-')) && !upper.startsWith('TORCH BEARER');
-  if (isPersonWithRole && !upper.startsWith('MESSAGE OF') && !upper.startsWith('FLYLEAF')) {
-    return false;
+  // If this line explicitly contains a role marker with person name (like "Elmo - Layout Artist" or "Elmo Cañet - Layout Artist"), it is a MEMBER record
+  if (s.includes(' - ') || s.includes('–') || s.includes('—') || s.includes(':') || s.includes('(')) {
+    const roleKeywords = ['LAYOUT ARTIST', 'GRAPHIC ARTIST', 'ASSOCIATE EDITOR', 'MANAGING EDITOR', 'EDITOR-IN-CHIEF', 'BOARD SECRETARY', 'PROOFREADER', 'JUNIOR STAFF', 'COLLEGE EDITOR'];
+    if (roleKeywords.some((r) => upper.includes(r))) {
+      return false;
+    }
   }
 
+  // Section titles
   if (
+    upper.startsWith('TORCH BEARER') ||
     upper.startsWith('MESSAGE OF') ||
     upper.startsWith('FLYLEAF') ||
-    upper.startsWith('TORCH BEARER') ||
-    upper.includes('HEADER') ||
-    upper.includes('MANAGERS') ||
+    upper.startsWith('FRONT FLYLEAF') ||
+    upper.startsWith('BACK FLYLEAF') ||
+    upper.startsWith('ABC FLYLEAF') ||
+    upper.startsWith('XYZ FLYLEAF') ||
+    upper.startsWith('FLYLEAVES') ||
+    upper.includes('EDITORIAL BOARD') ||
+    upper.includes('COLLEGE EDITORS') ||
+    upper.includes('JUNIOR STAFF') ||
+    upper.includes('HEADS AND MANAGERS') ||
     upper.includes('CLASS PICTURES') ||
-    upper.includes('ADMINISTRATORS') ||
-    upper.includes('ORGANIZATION') ||
+    upper.includes('UNIVERSITY ORGANIZATIONS') ||
     upper.includes('ORGANIZATIONS') ||
-    upper.includes('FLYLEAVES') ||
-    upper.includes('COVER') ||
-    upper.includes('PAGE PLAN') ||
-    upper.includes('SECTION') ||
+    upper.includes('FACULTY') ||
+    upper.includes('ADMINISTRATION') ||
     upper.includes('DEDICATION') ||
-    upper.includes('DEDICATIONS') ||
     upper.includes('PREAMBLE') ||
     upper.includes('VISION') ||
     upper.includes('MISSION') ||
     upper.includes('PUBLICATION') ||
-    upper.includes('FOREWORD') ||
-    upper.includes('COLOPHON') ||
-    upper.includes('ACKNOWLEDGMENT') ||
-    upper.includes('TABLE OF CONTENTS')
-  ) {
-    return true;
-  }
-
-  if (
-    !s.includes(',') &&
-    !s.includes('-') &&
-    (upper.endsWith('HEAD') ||
-      upper.endsWith('MANAGER') ||
-      upper.endsWith('DIRECTOR') ||
-      upper.endsWith('CHAIR') ||
-      upper.endsWith('DEAN') ||
-      upper.endsWith('PRESIDENT') ||
-      upper.endsWith('OFFICER') ||
-      upper.endsWith('FLYLEAF') ||
-      upper.endsWith('FLYLEAVES') ||
-      upper.endsWith('COVER') ||
-      upper.endsWith('SECTION') ||
-      upper.endsWith('DETAILS') ||
-      upper.endsWith('BOARD') ||
-      upper.endsWith('PAGE'))
+    upper.includes('COVER') ||
+    upper.includes('PAGE PLAN') ||
+    upper.includes('SECTION')
   ) {
     return true;
   }
@@ -644,131 +626,19 @@ const checkIsHeaderEntry = (str: string): boolean => {
   return false;
 };
 
-const isDepartmentHeader = (str: string): boolean => {
-  if (!str) return false;
-  if (matchExactTorchSection(str) !== null) return true;
-  if (checkIsHeaderEntry(str)) return true;
-  const upper = str.trim().toUpperCase();
-  return DEPT_KEYWORDS.some((keyword) => upper.includes(keyword));
-};
-
-const cleanDepartmentName = (str: string): string => {
+const formatSectionTitle = (str: string): string => {
   if (!str) return 'General';
+  const s = str.trim();
+  const upper = s.toUpperCase();
 
-  const torchMatch = matchExactTorchSection(str);
-  if (torchMatch) {
-    return torchMatch;
-  }
+  if (upper.includes('EDITORIAL BOARD')) return 'Torch Bearer 2026 - Editorial Board';
+  if (upper.includes('COLLEGE EDITORS') || upper.includes('COLLEGE EDITOR')) return 'Torch Bearer 2026 - College Editors';
+  if (upper.includes('JUNIOR STAFF')) return 'Torch Bearer 2026 - Junior Staff';
+  if (upper.includes('ABC FLYLEAF') || upper.includes('ABC FLYLEAVES')) return 'ABC Flyleaves';
+  if (upper.includes('XYZ FLYLEAF') || upper.includes('XYZ FLYLEAVES')) return 'XYZ Flyleaves';
+  if (upper.includes('FLYLEAF') || upper.includes('FLYLEAVES')) return 'Flyleaves';
 
-  let line = str.split(/\r?\n/)[0].trim();
-
-  if (line.toUpperCase().includes('MESSAGE OF')) {
-    return line;
-  }
-
-  line = line
-    .replace(/\bwith\s+Header\b/gi, '')
-    .replace(/\bHeader\s+Row\b/gi, '')
-    .replace(/\bHeader\b/gi, '')
-    .replace(/\bPage\s+Plan\b/gi, '')
-    .trim();
-
-  const SECTION_TITLE_PATTERNS = [
-    /^(ABC\s+FLYLEAVES?)/i,
-    /^(XYZ\s+FLYLEAVES?)/i,
-    /^(FRONT\s+FLYLEAF|BACK\s+FLYLEAF|FLYLEAVES?)/i,
-    /^(UNIVERSITY\s+ORGANIZATIONS?)/i,
-    /^(HEADS?\s+AND\s+MANAGERS?)/i,
-    /^(CHTM\s+BSHM)/i,
-    /^(CED\s*-\s*BECED)/i,
-    /^(BACOMM)/i,
-    /^(AB\s+ENG(?:LISH)?)/i,
-    /^(BS\s+MATH)/i,
-    /^(BS\s+PSYCH)/i,
-    /^(CLASS\s+PICTURES)/i,
-    /^(FACULTY)/i,
-    /^(ADMINISTRATION)/i,
-  ];
-
-  for (const pattern of SECTION_TITLE_PATTERNS) {
-    const match = line.match(pattern);
-    if (match) {
-      let title = match[1].trim();
-      title = title.replace(/[-–—:]+$/, '').trim();
-      return title;
-    }
-  }
-
-  const commaIdx = line.indexOf(',');
-  if (commaIdx !== -1) {
-    const textBeforeComma = line.substring(0, commaIdx).trim();
-    const parts = textBeforeComma.split(/\s+/);
-    if (parts.length > 1) {
-      const lastWord = parts[parts.length - 1];
-      if (/^[A-Z]{2,}$/.test(lastWord)) {
-        parts.pop();
-        line = parts.join(' ');
-      } else {
-        line = textBeforeComma;
-      }
-    } else {
-      line = textBeforeComma;
-    }
-  }
-
-  line = line.replace(/[-–—:]+$/, '').trim();
-  return line || 'General';
-};
-
-const parseNameAndRole = (rawStr: string): { name: string; role?: string } => {
-  const trimmed = rawStr.trim();
-  const dashMatch = trimmed.match(/^(.+?)\s*[\-–—]\s*(.+)$/);
-  if (dashMatch) {
-    const primaryName = dashMatch[1].trim();
-    const roleOrDept = dashMatch[2].trim();
-    if (primaryName && roleOrDept) {
-      return { name: primaryName, role: roleOrDept };
-    }
-  }
-  return { name: trimmed };
-};
-
-const isLayoutMarkerOrInstruction = (str: string): boolean => {
-  const s = str.trim().toUpperCase();
-
-  if (/^[A-Z]$/.test(s)) return true;
-
-  if (/^\d+$/.test(s) || /^P-?\d+$/i.test(s)) return true;
-
-  if (
-    s.includes('LAYOUT') ||
-    s.includes('C/O') ||
-    s.includes('INSTRUCTION') ||
-    s.includes('PAGE PLAN') ||
-    s.includes('PAGE NUMBER') ||
-    s.includes('SPREAD') ||
-    s.includes('BLANK') ||
-    s.includes('VACANT') ||
-    s.includes('MEMORIAM')
-  ) {
-    return true;
-  }
-
-  if (
-    s === 'HEADER' ||
-    s === 'CLASS PICTURES' ||
-    s === 'BACOMM' ||
-    s === 'AB ENGLISH' ||
-    s === 'BS MATH' ||
-    s === 'BS PSYCH' ||
-    s === 'FACULTY' ||
-    s === 'ADMINISTRATION' ||
-    s === 'CONTENTS'
-  ) {
-    return true;
-  }
-
-  return false;
+  return s;
 };
 
 const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
@@ -839,7 +709,7 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
     setSelectedDepartment('ALL');
   }, [url, activeSheetName]);
 
-  // Parse Active Sheet Tab with Page Label Extraction & Strict Torch Bearer Section Scope Isolation
+  // Parse Active Sheet Tab dynamically with column detection and section grouping
   useEffect(() => {
     if (!workbook || !activeSheetName) return;
 
@@ -850,70 +720,95 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
     const records: PagePlanRecord[] = [];
     let currentDepartment = activeSheetName || 'General';
 
+    // Dynamic Column Index Detection
+    let colPageIdx = 0;
+    let colContentIdx = 1;
+    let colPhotoIdx = 2;
+    let colTextIdx = 3;
+    let colInstructionIdx = 4;
+
+    // Scan top rows for column header titles
+    for (let r = 0; r < Math.min(5, rawRows.length); r++) {
+      const row = rawRows[r];
+      if (Array.isArray(row)) {
+        row.forEach((cell, idx) => {
+          const val = String(cell || '').trim().toLowerCase();
+          if (/^page(\s*number|\s*#)?$/i.test(val) || val === 'p#' || val === 'page no.') {
+            colPageIdx = idx;
+          } else if (/^(contents?(\s*for\s*this\s*page)?|student\s*name|names?|title)$/i.test(val)) {
+            colContentIdx = idx;
+          } else if (/^(photos?(\/cliparts?)?|pic|picture)$/i.test(val)) {
+            colPhotoIdx = idx;
+          } else if (/^texts?$/i.test(val)) {
+            colTextIdx = idx;
+          } else if (/^(instructions?(\s*to\s*midtown)?|remarks?|notes?)$/i.test(val)) {
+            colInstructionIdx = idx;
+          }
+        });
+      }
+    }
+
     rawRows.forEach((row) => {
       if (!Array.isArray(row) || row.length === 0) return;
 
-      // Filter out general Excel header rows
-      const isHeaderRow = row.some((cell) => cell && isHeaderString(String(cell)));
-      if (isHeaderRow) return;
+      // Skip row only if it is the literal template column header row
+      const rowStr = row.map((c) => String(c || '').trim().toLowerCase()).join(' ');
+      if (!rowStr.trim()) return;
 
-      const colARaw = row[0] !== undefined && row[0] !== null ? String(row[0]).trim() : '';
+      if (
+        (rowStr.includes('contents for this page') && rowStr.includes('page number')) ||
+        (rowStr.includes('midtown printing') && rowStr.includes('instruction'))
+      ) {
+        return;
+      }
+
+      const colARaw = row[colPageIdx] !== undefined && row[colPageIdx] !== null ? String(row[colPageIdx]).trim() : '';
       const pageLabel = extractPageLabel(colARaw);
 
-      let nameCell = String(row[1] || '').trim();
+      let nameCell = String(row[colContentIdx] || '').trim();
+
+      // If content cell is empty but Col A has text that is not purely a page number
       if (!nameCell && colARaw) {
-        if (!isHeaderString(colARaw) && !isLayoutMarkerOrInstruction(colARaw)) {
+        if (!/^\d+$/.test(colARaw) && !/^p-?\d+$/i.test(colARaw)) {
           nameCell = colARaw;
         }
       }
 
       if (!nameCell) return;
 
-      const photoCell = String(row[2] || '').trim();
-      const textCell = String(row[3] || '').trim();
-      const instructionCell = String(row[4] || '').trim();
+      const photoCell = String(row[colPhotoIdx] || '').trim();
+      const textCell = String(row[colTextIdx] || '').trim();
+      const instructionCell = String(row[colInstructionIdx] || '').trim();
 
       const lines = nameCell.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       const photoLines = photoCell ? photoCell.split(/\r?\n/).map((l) => l.trim()) : [];
       const textLines = textCell ? textCell.split(/\r?\n/).map((l) => l.trim()) : [];
       const instructionLines = instructionCell ? instructionCell.split(/\r?\n/).map((l) => l.trim()) : [];
 
-      let localDept = currentDepartment;
-
-      lines.forEach((lineStr, i) => {
+      lines.forEach((lineStr, lineIdx) => {
         const trimmed = lineStr.trim();
         if (!trimmed) return;
 
-        // 1. Check if lineStr defines a Torch Bearer Section Header or Flyleaf Header
-        const matchedTorch = matchExactTorchSection(trimmed);
-        if (matchedTorch) {
-          localDept = matchedTorch;
-          currentDepartment = matchedTorch;
-          records.push({
-            name: matchedTorch,
-            photoStatus: photoCell || '',
-            textStatus: textCell || '',
-            instruction: instructionCell || '',
-            department: localDept,
-            isHeader: true,
-            pageLabel: pageLabel,
-            pageNumber: pageLabel,
-          });
+        // Skip template headers if encountered as single text lines
+        if (
+          trimmed.toLowerCase() === 'contents for this page' ||
+          trimmed.toLowerCase() === 'page number' ||
+          trimmed.toLowerCase() === 'photos/cliparts/background' ||
+          trimmed.toLowerCase() === 'instruction to midtown'
+        ) {
           return;
         }
 
-        // 2. Check if lineStr defines a Section / Department / Flyleaf Header across ALL tabs
-        if (checkIsHeaderEntry(trimmed) || (isDepartmentHeader(trimmed) && !trimmed.includes('-') && !trimmed.includes(','))) {
-          const cleaned = cleanDepartmentName(trimmed);
-          const headerTitle = cleaned && cleaned !== 'General' ? cleaned : trimmed;
-          localDept = headerTitle;
+        // Check if this line is a Section / Department Header
+        if (isSectionHeaderCandidate(trimmed)) {
+          const headerTitle = formatSectionTitle(trimmed);
           currentDepartment = headerTitle;
           records.push({
             name: headerTitle,
             photoStatus: photoCell || '',
             textStatus: textCell || '',
             instruction: instructionCell || '',
-            department: localDept,
+            department: currentDepartment,
             isHeader: true,
             pageLabel: pageLabel,
             pageNumber: pageLabel,
@@ -921,35 +816,27 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
           return;
         }
 
-        if (isHeaderString(trimmed) || isLayoutMarkerOrInstruction(trimmed)) return;
-
-        // Ignore line entries matching the active section header title itself
-        if (localDept && trimmed.toLowerCase() === localDept.toLowerCase()) return;
-
+        // Parse student / editorial board / staff record
         const { name, role } = parseNameAndRole(trimmed);
 
-        const photoStatus = photoLines[i] !== undefined && photoLines[i] !== '' ? photoLines[i] : photoCell;
-        const textStatus = textLines[i] !== undefined && textLines[i] !== '' ? textLines[i] : textCell;
-        const instruction = instructionLines[i] !== undefined && instructionLines[i] !== '' ? instructionLines[i] : instructionCell;
+        const photoStatus = photoLines[lineIdx] !== undefined && photoLines[lineIdx] !== '' ? photoLines[lineIdx] : photoCell;
+        const textStatus = textLines[lineIdx] !== undefined && textLines[lineIdx] !== '' ? textLines[lineIdx] : textCell;
+        const instruction = instructionLines[lineIdx] !== undefined && instructionLines[lineIdx] !== '' ? instructionLines[lineIdx] : instructionCell;
 
-        if (name && name.length >= 3) {
+        if (name && name.trim().length > 0 && name !== 'undefined' && name !== 'null') {
           records.push({
-            name: name,
-            role: role,
+            name: name.trim(),
+            role: role ? role.trim() : undefined,
             photoStatus: photoStatus || '',
             textStatus: textStatus || '',
             instruction: instruction || '',
-            department: localDept,
+            department: currentDepartment,
             isHeader: false,
             pageLabel: pageLabel,
+            pageNumber: pageLabel,
           });
         }
       });
-
-      // STRICT TAB & SECTION BOUNDARY RESET:
-      if (localDept.startsWith('Torch Bearer 2026 -') || localDept.toLowerCase().includes('flyleaf')) {
-        currentDepartment = activeSheetName || 'General';
-      }
     });
 
     setExtractedRecords(records);
@@ -996,14 +883,14 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
     });
   }, [extractedRecords, selectedDepartment, searchQuery]);
 
-  const copyToClipboard = (text: string, index: number) => {
+  const copyToClipboard = useCallback((text: string, index: number) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedIndex(index);
       setTimeout(() => setCopiedIndex(null), 1500);
     });
-  };
+  }, []);
 
-  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -1026,15 +913,15 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
       setIsUploading(false);
       e.target.value = '';
     }
-  };
+  }, [onShowToast, onUploadSuccess]);
 
-  const handleDeleteFile = () => {
+  const handleDeleteFile = useCallback(() => {
     if (!url) return;
     const targetSheet = availableSheets.find((s) => s.url === url);
     const sheetId = targetSheet ? String(targetSheet.id) : '';
     const sheetName = targetSheet ? targetSheet.name : getFilenameFromUrl(url, 'Spreadsheet');
     onRequestDelete('spreadsheet', url, sheetId, sheetName);
-  };
+  }, [url, availableSheets, onRequestDelete]);
 
   const sheetFilename = getFilenameFromUrl(url, 'Page Plan');
 
@@ -1066,7 +953,7 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
             ) : (
               availableSheets.map((sheet) => (
                 <option key={sheet.url} value={sheet.url} className="bg-white text-slate-900">
-                  {sheet.name}
+                  {sheet.name || getFilenameFromUrl(sheet.url, 'Spreadsheet')}
                 </option>
               ))
             )}
@@ -1095,7 +982,7 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
 
           <label className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-[#DC95FF] hover:opacity-90 text-white font-medium text-xs rounded-lg cursor-pointer transition-all shadow-xs">
             {isUploading ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <OrbitRing className="w-3.5 h-3.5 text-white" />
             ) : (
               <Upload className="w-3.5 h-3.5" />
             )}
@@ -1175,8 +1062,12 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
               Select an existing page plan from the dropdown above or upload an .xlsx / .csv file.
             </p>
             <label className="mt-4 px-4 py-2 bg-[#DC95FF] hover:opacity-90 text-white font-medium text-xs rounded-lg transition-all shadow-xs cursor-pointer inline-flex items-center space-x-2">
-              <Upload className="w-3.5 h-3.5" />
-              <span>Upload Page Plan (.xlsx / .csv)</span>
+              {isUploading ? (
+                <OrbitRing className="w-3.5 h-3.5 text-white" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              <span>{isUploading ? 'Uploading...' : 'Upload Page Plan (.xlsx / .csv)'}</span>
               <input
                 type="file"
                 accept=".xlsx,.csv"
@@ -1187,9 +1078,12 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
             </label>
           </div>
         ) : isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-[#DC95FF] space-y-3">
-            <RefreshCw className="w-7 h-7 animate-spin text-[#DC95FF]" />
-            <span className="text-xs font-medium text-slate-600">Extracting and stacking student names...</span>
+          <div className="w-full flex-1 p-2 space-y-3">
+            <div className="flex items-center space-x-2 text-xs font-semibold text-purple-800 bg-purple-50 p-3 rounded-xl border border-purple-100 shadow-xs">
+              <OrbitRing className="w-4 h-4 text-[#DC95FF]" />
+              <span>Extracting, sorting, and stacking page plan roster records...</span>
+            </div>
+            <ListSkeleton rows={6} />
           </div>
         ) : error ? (
           <div className="p-4 bg-rose-50 border border-rose-200 text-rose-900 rounded-xl text-xs">
@@ -1217,7 +1111,7 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
 
                   return (
                     <div
-                      key={`header-${index}`}
+                      key={`header-${record.department}-${record.pageNumber || record.pageLabel || ''}-${record.name}-${index}`}
                       className="w-full my-3 p-3.5 bg-gradient-to-r from-[#DC95FF]/15 via-purple-50/60 to-transparent border-l-4 border-[#DC95FF] rounded-r-xl flex flex-col gap-2 shadow-xs"
                     >
                       <div className="flex items-center justify-between">
@@ -1226,12 +1120,12 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
                             {isFlyleafHeader ? 'FLYLEAF HEADER' : 'HEADER'}
                           </span>
                           {pageNum && (
-                            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200 font-mono">
+                            <span className="text-xs font-bold px-2.5 py-0.5 rounded-md bg-purple-100 text-purple-900 border border-purple-300 font-mono">
                               Page {pageNum}
                             </span>
                           )}
                           <h4 className="text-sm font-extrabold text-slate-900 tracking-wide ml-1">
-                            {record.name}
+                            <HighlightedText text={record.name} query={searchQuery} />
                           </h4>
                         </div>
                       </div>
@@ -1240,23 +1134,23 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
                       {(record.role || record.photoStatus || record.textStatus || record.instruction) && (
                         <div className="flex flex-wrap gap-2 text-xs mt-1">
                           {record.role && (
-                            <span className="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-medium text-xs inline-flex items-center gap-1">
-                              👑 {record.role}
+                            <span className="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-900 border border-purple-200 font-bold text-xs inline-flex items-center gap-1">
+                              👑 <HighlightedText text={record.role} query={searchQuery} />
                             </span>
                           )}
                           {record.photoStatus && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-50 text-emerald-800 border border-emerald-200">
                               📷 Photo: {record.photoStatus}
                             </span>
                           )}
                           {record.textStatus && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-50 text-emerald-800 border border-emerald-200">
                               📝 Text: {record.textStatus}
                             </span>
                           )}
                           {record.instruction && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-slate-100 text-slate-600 border border-slate-200">
-                              📌 Note: {record.instruction}
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium font-mono bg-slate-100 text-slate-700 border border-slate-200">
+                              📌 Note: <HighlightedText text={record.instruction} query={searchQuery} />
                             </span>
                           )}
                         </div>
@@ -1271,24 +1165,24 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
 
                 return (
                   <div
-                    key={index}
-                    className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-[#DC95FF]/40 transition-all flex flex-col gap-2 mb-2"
+                    key={`item-${record.department}-${record.pageLabel || ''}-${record.name}-${index}`}
+                    className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-[#DC95FF]/50 transition-all flex flex-col gap-2 mb-2"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold font-mono text-[#DC95FF]">#{studentNum}</span>
+                        <span className="text-xs font-extrabold font-mono text-[#DC95FF]">#{studentNum}</span>
                         {record.pageLabel && (
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-mono">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200 font-mono">
                             Page {record.pageLabel}
                           </span>
                         )}
                       </div>
-                      <span className="font-semibold text-slate-800 text-base flex-1 ml-3 select-all break-words">
-                        {record.name}
+                      <span className="font-bold text-slate-900 text-base flex-1 ml-3 select-all break-words tracking-tight">
+                        <HighlightedText text={record.name} query={searchQuery} />
                       </span>
                       <button
                         onClick={() => copyToClipboard(record.name, index)}
-                        className="text-xs font-medium px-3 py-1 rounded-md bg-purple-50 text-purple-700 hover:bg-[#DC95FF] hover:text-white transition-all duration-150 cursor-pointer"
+                        className="text-xs font-bold px-3 py-1 rounded-md bg-purple-50 text-purple-800 hover:bg-[#DC95FF] hover:text-white transition-all duration-150 cursor-pointer shadow-2xs"
                       >
                         {copiedIndex === index ? 'Copied!' : 'Copy'}
                       </button>
@@ -1296,34 +1190,34 @@ const SpreadsheetViewerPane = React.memo(function SpreadsheetViewerPane({
 
                     <div className="flex flex-wrap gap-2 text-xs mt-1">
                       {record.role && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-medium text-xs inline-flex items-center gap-1">
-                          👑 {record.role}
+                        <span className="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-900 border border-purple-200 font-bold text-xs inline-flex items-center gap-1">
+                          👑 <HighlightedText text={record.role} query={searchQuery} />
                         </span>
                       )}
 
                       {record.photoStatus.includes('A') || record.photoStatus === 'A' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-50 text-emerald-800 border border-emerald-200">
                           📷 Photo: {record.photoStatus || 'A'}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-rose-50 text-rose-700 border border-rose-200">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-rose-50 text-rose-800 border border-rose-200">
                           📷 Photo: {record.photoStatus || 'N/A'}
                         </span>
                       )}
 
                       {record.textStatus.includes('A') || record.textStatus === 'A' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-50 text-emerald-800 border border-emerald-200">
                           📝 Text: {record.textStatus || 'A'}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-rose-50 text-rose-700 border border-rose-200">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-rose-50 text-rose-800 border border-rose-200">
                           📝 Text: {record.textStatus || 'N/A'}
                         </span>
                       )}
 
                       {record.instruction && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-slate-100 text-slate-600 border border-slate-200">
-                          📌 Note: {record.instruction}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium font-mono bg-slate-100 text-slate-700 border border-slate-200">
+                          📌 Note: <HighlightedText text={record.instruction} query={searchQuery} />
                         </span>
                       )}
                     </div>
@@ -1372,12 +1266,12 @@ export default function ProofreadPage() {
     }
   }, []);
 
-  const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_token');
       sessionStorage.removeItem('auth_token');
@@ -1386,13 +1280,31 @@ export default function ProofreadPage() {
     }
     showToast('Logged out successfully', 'success');
     router.push('/login');
-  };
+  }, [router, showToast]);
 
-  const handleRequestDelete = (fileType: 'document' | 'spreadsheet', url: string, id: string, name: string) => {
+  const handleRequestDelete = useCallback((fileType: 'document' | 'spreadsheet', url: string, id: string, name: string) => {
     setPendingDelete({ fileType, url, id, name });
-  };
+  }, []);
 
-  const handleConfirmDelete = async () => {
+  // Independent Document Delete Success
+  const handleDocDeleteSuccess = useCallback((deletedUrl: string) => {
+    setAvailableDocs((prev) => {
+      const remaining = prev.filter((d) => d.url !== deletedUrl && String(d.id) !== String(deletedUrl));
+      setSelectedDocUrl((current) => (current === deletedUrl ? (remaining.length > 0 ? remaining[0].url : '') : current));
+      return remaining;
+    });
+  }, []);
+
+  // Independent Spreadsheet Delete Success
+  const handleSheetDeleteSuccess = useCallback((deletedUrl: string) => {
+    setAvailableSheets((prev) => {
+      const remaining = prev.filter((s) => s.url !== deletedUrl && String(s.id) !== String(deletedUrl));
+      setSelectedSheetUrl((current) => (current === deletedUrl ? (remaining.length > 0 ? remaining[0].url : '') : current));
+      return remaining;
+    });
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
     if (!pendingDelete) return;
     const { fileType, url, id, name } = pendingDelete;
     setPendingDelete(null);
@@ -1416,9 +1328,9 @@ export default function ProofreadPage() {
       console.error('Error deleting file:', err);
       showToast(err.message || 'An error occurred while deleting file.', 'error');
     }
-  };
+  }, [pendingDelete, showToast, handleDocDeleteSuccess, handleSheetDeleteSuccess]);
 
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
     setIsLoadingFiles(true);
     const hasToken = typeof window !== 'undefined' && Boolean(localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'));
     if (!hasToken) {
@@ -1443,18 +1355,14 @@ export default function ProofreadPage() {
       setAvailableDocs(docs);
       setAvailableSheets(sheets);
 
-      if (docs.length > 0 && !selectedDocUrl) {
-        setSelectedDocUrl(docs[0].url);
-      }
-      if (sheets.length > 0 && !selectedSheetUrl) {
-        setSelectedSheetUrl(sheets[0].url);
-      }
+      setSelectedDocUrl((current) => (!current && docs.length > 0 ? docs[0].url : current));
+      setSelectedSheetUrl((current) => (!current && sheets.length > 0 ? sheets[0].url : current));
     } catch (err) {
       console.error('Failed to fetch file lists:', err);
     } finally {
       setIsLoadingFiles(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const hasToken = typeof window !== 'undefined' && Boolean(localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token'));
@@ -1464,10 +1372,10 @@ export default function ProofreadPage() {
       setAuthError(false);
     }
     fetchFiles();
-  }, []);
+  }, [fetchFiles]);
 
   // Independent Document Upload Success
-  const handleDocUploadSuccess = async (newDocUrl: string) => {
+  const handleDocUploadSuccess = useCallback(async (newDocUrl: string) => {
     const res = await apiFetchFiles();
     const data = res.data || {};
     const docs: FileItem[] = data.documents || [];
@@ -1477,21 +1385,10 @@ export default function ProofreadPage() {
     } else if (docs.length > 0) {
       setSelectedDocUrl(docs[0].url);
     }
-  };
-
-  // Independent Document Delete Success
-  const handleDocDeleteSuccess = (deletedUrl: string) => {
-    setAvailableDocs((prev) => {
-      const remaining = prev.filter((d) => d.url !== deletedUrl && String(d.id) !== String(deletedUrl));
-      if (selectedDocUrl === deletedUrl) {
-        setSelectedDocUrl(remaining.length > 0 ? remaining[0].url : '');
-      }
-      return remaining;
-    });
-  };
+  }, []);
 
   // Independent Spreadsheet Upload Success
-  const handleSheetUploadSuccess = async (newSheetUrl: string) => {
+  const handleSheetUploadSuccess = useCallback(async (newSheetUrl: string) => {
     const res = await apiFetchFiles();
     const data = res.data || {};
     const sheets: FileItem[] = data.spreadsheets || [];
@@ -1501,18 +1398,7 @@ export default function ProofreadPage() {
     } else if (sheets.length > 0) {
       setSelectedSheetUrl(sheets[0].url);
     }
-  };
-
-  // Independent Spreadsheet Delete Success
-  const handleSheetDeleteSuccess = (deletedUrl: string) => {
-    setAvailableSheets((prev) => {
-      const remaining = prev.filter((s) => s.url !== deletedUrl && String(s.id) !== String(deletedUrl));
-      if (selectedSheetUrl === deletedUrl) {
-        setSelectedSheetUrl(remaining.length > 0 ? remaining[0].url : '');
-      }
-      return remaining;
-    });
-  };
+  }, []);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">

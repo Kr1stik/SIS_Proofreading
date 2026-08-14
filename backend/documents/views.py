@@ -170,18 +170,8 @@ def login_view(request):
     identifier = request.data.get('username') or request.data.get('email')
     password = request.data.get('password')
 
-    print("=== AUTH DEBUG ===")
-    print(f"Received identifier: '{identifier}', password provided: {bool(password)}")
-
     if not identifier or not password:
         return Response({'error': 'Please enter both username and password.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Check if user exists in DB at all
-    user_exists = User.objects.filter(username=identifier).first() or User.objects.filter(email__iexact=identifier).first()
-    if user_exists:
-        print(f"Found user in DB: '{user_exists.username}', is_active: {user_exists.is_active}")
-    else:
-        print(f"No user found matching: '{identifier}'")
 
     # 1. Direct authentication
     user = authenticate(username=identifier, password=password)
@@ -193,12 +183,10 @@ def login_view(request):
             user = authenticate(username=user_obj.username, password=password)
 
     if user is not None:
-        print(f"Authentication SUCCESS for '{user.username}'")
         return Response({
             'success': True,
             'token': f"dev-token-{user.id}",
             'user': {'id': user.id, 'username': user.username, 'email': user.email}
         }, status=status.HTTP_200_OK)
 
-    print("Authentication FAILED: Invalid password or inactive account.")
     return Response({'error': 'Invalid username or password.'}, status=status.HTTP_401_UNAUTHORIZED)

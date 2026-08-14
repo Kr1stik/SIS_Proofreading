@@ -2,12 +2,14 @@
 
 import React, { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Flame, CheckCircle2, FileCheck, Layers, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Flame, CheckCircle2, FileCheck, Layers, ShieldCheck, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { loginUser } from '@/lib/api';
+import { OrbitRing } from '@/components/ui/orbit-ring';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const router = useRouter();
@@ -102,14 +104,28 @@ export default function LoginPage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Password
                 </label>
-                <input
-                  type="password"
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#DC95FF] focus:outline-none mb-1 text-slate-800 placeholder-slate-400 font-medium transition-all shadow-xs"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pr-10 text-sm focus:ring-2 focus:ring-[#DC95FF] focus:outline-none mb-1 text-slate-800 placeholder-slate-400 font-medium transition-all shadow-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer p-1"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Controls Row */}
@@ -130,7 +146,14 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full bg-[#DC95FF] hover:bg-[#c87deb] active:scale-[0.99] text-white font-semibold py-3 rounded-lg shadow-md transition-all cursor-pointer text-sm mt-2 tracking-wide flex items-center justify-center space-x-2"
               >
-                <span>{isLoading ? 'Authenticating...' : 'Sign In to Dashboard'}</span>
+                {isLoading ? (
+                  <>
+                    <OrbitRing className="w-4 h-4 text-white" />
+                    <span>Authenticating...</span>
+                  </>
+                ) : (
+                  <span>Sign In to Dashboard</span>
+                )}
               </button>
             </form>
 
