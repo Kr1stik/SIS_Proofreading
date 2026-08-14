@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, getMediaUrl } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +18,20 @@ export async function GET(request: Request) {
 
     if (res.ok) {
       const data = await res.json();
+      if (data.documents && Array.isArray(data.documents)) {
+        data.documents = data.documents.map((doc: any) => ({
+          ...doc,
+          url: getMediaUrl(doc.url || doc.file_url || doc.file || ''),
+          file_url: getMediaUrl(doc.file_url || doc.url || doc.file || ''),
+        }));
+      }
+      if (data.spreadsheets && Array.isArray(data.spreadsheets)) {
+        data.spreadsheets = data.spreadsheets.map((sheet: any) => ({
+          ...sheet,
+          url: getMediaUrl(sheet.url || sheet.file_url || sheet.file || ''),
+          file_url: getMediaUrl(sheet.file_url || sheet.url || sheet.file || ''),
+        }));
+      }
       return NextResponse.json(data);
     }
 

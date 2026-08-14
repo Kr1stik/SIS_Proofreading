@@ -1,5 +1,14 @@
-const rawDjangoUrl = process.env.NEXT_PUBLIC_DJANGO_BASE_URL || 'http://127.0.0.1:8000';
-const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://127.0.0.1:8000/api';
+const rawDjangoUrl =
+  process.env.NEXT_PUBLIC_DJANGO_BASE_URL ||
+  (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, '') : '') ||
+  (process.env.API_BASE_URL ? process.env.API_BASE_URL.replace(/\/api\/?$/, '') : '') ||
+  'http://127.0.0.1:8000';
+
+const rawApiUrl =
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.API_BASE_URL ||
+  (process.env.NEXT_PUBLIC_DJANGO_BASE_URL ? `${process.env.NEXT_PUBLIC_DJANGO_BASE_URL.replace(/\/$/, '')}/api` : '') ||
+  'http://127.0.0.1:8000/api';
 
 // Guarantee local backend connections NEVER use HTTPS
 export const DJANGO_BASE_URL = rawDjangoUrl
@@ -12,16 +21,29 @@ export const API_BASE_URL = rawApiUrl
 
 /**
  * Format relative Django media paths e.g. "/media/documents/CAS_SIS.docx.pdf"
- * Output: "http://127.0.0.1:8000/media/documents/CAS_SIS.docx.pdf"
+ * or rewrite residual localhost/127.0.0.1 URLs to DJANGO_BASE_URL when deployed to production.
  */
 export function getMediaUrl(url: string): string {
   if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://')) {
+
+  const isLocalhostUrl = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(url);
+  const isDjangoBaseRemote = !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(DJANGO_BASE_URL);
+
+  if (isLocalhostUrl) {
+    if (isDjangoBaseRemote) {
+      return url.replace(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i, DJANGO_BASE_URL);
+    }
     return url.replace(/^https:\/\/(127\.0\.0\.1|localhost)/i, 'http://$1');
   }
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
   if (url.startsWith('/')) {
     return `${DJANGO_BASE_URL}${url}`;
   }
+
   return `${DJANGO_BASE_URL}/${url}`;
 }
 
@@ -108,6 +130,7 @@ export async function uploadDocument(file: File) {
     if (res.ok || res.status === 200 || res.status === 201) {
       const data = await res.json();
       if (data.url) data.url = getMediaUrl(data.url);
+      if (data.file_url) data.file_url = getMediaUrl(data.file_url);
       return { success: true, status: res.status, ...data };
     }
   } catch (err) {
@@ -121,6 +144,7 @@ export async function uploadDocument(file: File) {
   });
   const fallbackData = await fallbackRes.json();
   if (fallbackData.url) fallbackData.url = getMediaUrl(fallbackData.url);
+  if (fallbackData.file_url) fallbackData.file_url = getMediaUrl(fallbackData.file_url);
   return { success: fallbackRes.ok, status: fallbackRes.status, ...fallbackData };
 }
 
@@ -142,6 +166,7 @@ export async function uploadSpreadsheet(file: File) {
     if (res.ok || res.status === 200 || res.status === 201) {
       const data = await res.json();
       if (data.url) data.url = getMediaUrl(data.url);
+      if (data.file_url) data.file_url = getMediaUrl(data.file_url);
       return { success: true, status: res.status, ...data };
     }
   } catch (err) {
@@ -155,11 +180,13 @@ export async function uploadSpreadsheet(file: File) {
   });
   const fallbackData = await fallbackRes.json();
   if (fallbackData.url) fallbackData.url = getMediaUrl(fallbackData.url);
+  if (fallbackData.file_url) fallbackData.file_url = getMediaUrl(fallbackData.file_url);
   return { success: fallbackRes.ok, status: fallbackRes.status, ...fallbackData };
 }
 
 export async function fetchFiles() {
   const headers = getAuthHeaders();
+  // 1. Try Next.js API proxy route first
   try {
     const res = await fetch('/api/files', { headers, cache: 'no-store' });
     if (res.ok) {
@@ -167,20 +194,43 @@ export async function fetchFiles() {
       if (data.documents && Array.isArray(data.documents)) {
         data.documents = data.documents.map((d: any) => ({
           ...d,
-          url: getMediaUrl(d.url),
+          url: getMediaUrl(d.url || d.file_url || d.file),
         }));
       }
       if (data.spreadsheets && Array.isArray(data.spreadsheets)) {
         data.spreadsheets = data.spreadsheets.map((s: any) => ({
           ...s,
-          url: getMediaUrl(s.url),
+          url: getMediaUrl(s.url || s.file_url || s.file),
+        }));
+      }
+      return { ok: true, status: res.status, data };
+    }
+  } catch (err) {
+    console.warn('Error fetching files via /api/files proxy, trying direct Django backend:', err);
+  }
+
+  // 2. Direct Django backend fallback
+  try {
+    const res = await fetch(`${API_BASE_URL}/files/`, { headers, cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.documents && Array.isArray(data.documents)) {
+        data.documents = data.documents.map((d: any) => ({
+          ...d,
+          url: getMediaUrl(d.url || d.file_url || d.file),
+        }));
+      }
+      if (data.spreadsheets && Array.isArray(data.spreadsheets)) {
+        data.spreadsheets = data.spreadsheets.map((s: any) => ({
+          ...s,
+          url: getMediaUrl(s.url || s.file_url || s.file),
         }));
       }
       return { ok: true, status: res.status, data };
     }
     return { ok: false, status: res.status, data: null };
   } catch (err) {
-    console.warn('Error fetching files via /api/files proxy:', err);
+    console.warn(`Error fetching files directly from ${API_BASE_URL}/files/:`, err);
     return { ok: false, status: 500, data: null };
   }
 }

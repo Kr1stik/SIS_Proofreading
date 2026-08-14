@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, getMediaUrl } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,16 +27,19 @@ export async function POST(request: NextRequest) {
 
     if (res.ok) {
       const data = await res.json();
-      return NextResponse.json(data);
+      if (data.url) {
+        data.url = getMediaUrl(data.url);
+      }
+      if (data.file_url) {
+        data.file_url = getMediaUrl(data.file_url);
+      }
+      return NextResponse.json(data, { status: res.status });
+    } else {
+      const errorData = await res.json().catch(() => ({}));
+      return NextResponse.json(errorData, { status: res.status });
     }
   } catch (err) {
     console.warn(`Django backend notice (POST /api/upload/ targeting ${API_BASE_URL}):`, err);
+    return NextResponse.json({ error: 'Backend unreachable' }, { status: 500 });
   }
-
-  return NextResponse.json({
-    success: true,
-    data: {
-      message: 'Upload request forwarded to Django REST backend',
-    },
-  });
 }

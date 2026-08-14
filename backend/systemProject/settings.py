@@ -34,7 +34,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-cyw!+jg))&x(7_
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 
 # Allow Render dynamic hosts in production or fallback to localhost
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',') if h.strip()]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -85,12 +85,19 @@ WSGI_APPLICATION = 'systemProject.wsgi.application'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Optional custom backend URL override for absolute media URL generation (e.g. Render / Custom Domain)
+BACKEND_URL = os.environ.get('BACKEND_URL') or os.environ.get('RENDER_EXTERNAL_URL') or (
+    f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}" if os.environ.get('RENDER_EXTERNAL_HOSTNAME') else None
+)
+
 # --- Static Files Configuration ---
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# --- Security Headers & Cookies Configuration ---
+# --- Security Headers & Proxy Configuration ---
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 X_FRAME_OPTIONS = 'SAMEORIGIN'
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

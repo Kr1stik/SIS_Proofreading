@@ -2,6 +2,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse, unquote
 
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -13,6 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from .models import Document, Spreadsheet
+from .serializers import DocumentSerializer, SpreadsheetSerializer, get_absolute_file_url
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +41,13 @@ def manage_files(request):
         if request.method == 'GET':
             documents = Document.objects.all().order_by('-uploaded_at')
             spreadsheets = Spreadsheet.objects.all().order_by('-uploaded_at')
-            
-            doc_data = [{'id': d.id, 'name': d.title, 'url': d.file.url} for d in documents]
-            sheet_data = [{'id': s.id, 'name': s.title, 'url': s.file.url} for s in spreadsheets]
-            
+
+            doc_serializer = DocumentSerializer(documents, many=True, context={'request': request})
+            sheet_serializer = SpreadsheetSerializer(spreadsheets, many=True, context={'request': request})
+
             return Response({
-                'documents': doc_data,
-                'spreadsheets': sheet_data
+                'documents': doc_serializer.data,
+                'spreadsheets': sheet_serializer.data
             }, status=status.HTTP_200_OK)
 
         elif request.method == 'DELETE':
@@ -65,8 +67,10 @@ def manage_files(request):
                 item = model.objects.filter(id=int(file_id)).first()
 
             if not item and file_url:
-                clean_filename = os.path.basename(file_url)
-                item = model.objects.filter(file__icontains=clean_filename).first()
+                parsed_path = unquote(urlparse(file_url).path)
+                clean_filename = os.path.basename(parsed_path)
+                if clean_filename:
+                    item = model.objects.filter(file__icontains=clean_filename).first()
 
             if item:
                 # Prevent path traversal outside MEDIA_ROOT
@@ -117,7 +121,8 @@ def upload_document(request):
             create_kwargs['uploaded_by'] = request.user
 
         doc = Document.objects.create(**create_kwargs)
-        return Response({'id': doc.id, 'name': doc.title, 'url': doc.file.url}, status=status.HTTP_201_CREATED)
+        serializer = DocumentSerializer(doc, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     except Exception as exc:
         logger.error(f"Error in upload_document: {exc}", exc_info=True)
         return Response({'error': 'An internal server error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -152,7 +157,8 @@ def upload_spreadsheet(request):
             create_kwargs['uploaded_by'] = request.user
 
         sheet = Spreadsheet.objects.create(**create_kwargs)
-        return Response({'id': sheet.id, 'name': sheet.title, 'url': sheet.file.url}, status=status.HTTP_201_CREATED)
+        serializer = SpreadsheetSerializer(sheet, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     except Exception as exc:
         logger.error(f"Error in upload_spreadsheet: {exc}", exc_info=True)
         return Response({'error': 'An internal server error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
