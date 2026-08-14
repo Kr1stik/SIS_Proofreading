@@ -135,7 +135,7 @@ MAILERS = {
 # --- Robust CORS Configuration ---
 raw_cors = os.environ.get(
     'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000,https://tbproofread.vercel.app/'
+    'http://localhost:3000,http://127.0.0.1:3000,https://tbproofread.vercel.app'
 )
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in raw_cors.split(',') if origin.strip()]
 
